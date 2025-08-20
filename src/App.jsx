@@ -87,7 +87,7 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [editingRoom, setEditingRoom] = useState(null);
 
-  const admins = ["adityasikarvar2502@gmail.com"]; // change/add emails here
+  const admins = ["adityasikarvar2502@gmail.com","dharmeshsikarvar@gmail.com"]; // change/add emails here
   const isAdmin = !!(user && admins.includes(user.email));
 
   /* --- seed fixed rooms into Firestore (non-destructive) --- */
