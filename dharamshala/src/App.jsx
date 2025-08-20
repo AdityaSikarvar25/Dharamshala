@@ -52,9 +52,27 @@ const FIXED_ROOMS = [
    UI / Status themes
    ============================ */
 const STATUS_META = {
-  Empty: { dot: "bg-gray-300", bg: "bg-white dark:bg-gray-800", border: "border-gray-200 dark:border-gray-700" },
-  Interested: { dot: "bg-amber-500", bg: "bg-amber-50 dark:bg-amber-900/30", border: "border-amber-300 dark:border-amber-700" },
-  Booked: { dot: "bg-green-500", bg: "bg-green-50 dark:bg-green-900/30", border: "border-green-300 dark:border-green-700" },
+  Empty: { 
+    bg: "bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900", 
+    border: "border-gray-200 dark:border-gray-700",
+    text: "text-gray-600 dark:text-gray-300",
+    dot: "bg-gray-400",
+    icon: "🏠"
+  },
+  Interested: { 
+    bg: "bg-gradient-to-br from-amber-50 to-orange-100 dark:from-amber-900/30 dark:to-orange-900/30", 
+    border: "border-amber-200 dark:border-amber-700",
+    text: "text-amber-700 dark:text-amber-300",
+    dot: "bg-amber-500",
+    icon: "👀"
+  },
+  Booked: { 
+    bg: "bg-gradient-to-br from-green-50 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30", 
+    border: "border-green-200 dark:border-green-700",
+    text: "text-green-700 dark:text-green-300",
+    dot: "bg-green-500",
+    icon: "✅"
+  },
 };
 
 /* ============================
@@ -65,7 +83,9 @@ export default function App() {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [selectedRoom, setSelectedRoom] = useState(null);
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [editingRoom, setEditingRoom] = useState(null);
 
   const admins = ["adityasikarvar2502@gmail.com"]; // change/add emails here
   const isAdmin = !!(user && admins.includes(user.email));
@@ -131,18 +151,34 @@ export default function App() {
   /* --- auth helpers --- */
   const handleSignIn = async () => {
     setError("");
-    try { await signInWithPopup(auth, provider); } catch (e) { console.error(e); setError("Login failed."); }
+    try { 
+      await signInWithPopup(auth, provider); 
+    } catch (e) { 
+      console.error(e); 
+      setError("Login failed."); 
+    }
   };
+
   const handleSignOut = async () => {
     setError("");
-    try { await signOut(auth); } catch (e) { console.error(e); setError("Sign out failed."); }
+    try { 
+      await signOut(auth); 
+      setEditingRoom(null);
+    } catch (e) { 
+      console.error(e); 
+      setError("Sign out failed."); 
+    }
   };
 
   /* --- update a room (admins only will succeed due to rules) --- */
   const updateRoom = async (roomNumber, data) => {
     setError("");
     try {
-      await updateDoc(doc(db, "rooms", String(roomNumber)), { ...data, updatedAt: Date.now() });
+      await updateDoc(doc(db, "rooms", String(roomNumber)), { 
+        ...data, 
+        updatedAt: Date.now() 
+      });
+      setEditingRoom(null);
     } catch (e) {
       console.error("Update error:", e);
       setError("Could not update room. Check permission / network.");
@@ -156,218 +192,357 @@ export default function App() {
     return m;
   }, [rooms]);
 
+  /* filtered rooms for display */
+  const filteredRooms = useMemo(() => {
+    let filtered = FIXED_ROOMS.map((meta) => {
+      const r = roomsMap.get(meta.number) || meta;
+      return { ...meta, ...r };
+    });
+
+    if (filterStatus !== "all") {
+      filtered = filtered.filter(room => room.status === filterStatus);
+    }
+
+    if (searchTerm) {
+      filtered = filtered.filter(room => 
+        room.number.toString().includes(searchTerm) ||
+        room.tag.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (room.note && room.note.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+    }
+
+    return filtered;
+  }, [roomsMap, filterStatus, searchTerm]);
+
+  const statusCounts = useMemo(() => {
+    const counts = { Empty: 0, Interested: 0, Booked: 0 };
+    rooms.forEach(room => {
+      if (counts.hasOwnProperty(room.status)) {
+        counts[room.status]++;
+      }
+    });
+    return counts;
+  }, [rooms]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-300">Loading rooms...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-white/80 dark:bg-gray-800/80 backdrop-blur border-b">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="text-2xl">🏨</div>
-            <div>
-              <h1 className="text-2xl font-semibold">Dharamshala</h1>
-              <div className="text-xs text-gray-500 dark:text-gray-300">Fixed room map</div>
+      <header className="sticky top-0 z-20 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md border-b border-white/20 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="text-3xl">🏨</div>
+              <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                  Dharamshala
+                </h1>
+                <div className="text-sm text-gray-500 dark:text-gray-400">Room Management System</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              {user ? (
+                <>
+                  <div className="text-right">
+                    <div className="text-sm font-medium">{user.displayName}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      {isAdmin ? "Admin" : "Viewer"} • {user.email}
+                    </div>
+                  </div>
+                  <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full" />
+                  <button 
+                    onClick={handleSignOut} 
+                    className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-colors"
+                  >
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <button 
+                  onClick={handleSignIn} 
+                  className="px-6 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition-colors"
+                >
+                  Sign in with Google
+                </button>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {user ? (
-              <>
-                <div className="text-sm text-gray-700 dark:text-gray-200">{user.email}</div>
-                <button onClick={handleSignOut} className="px-3 py-1 rounded-md bg-rose-500 text-white text-sm">Logout</button>
-              </>
-            ) : (
-              <button onClick={handleSignIn} className="px-3 py-1 rounded-md bg-blue-600 text-white text-sm">Login</button>
-            )}
+          {/* Stats and Controls */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-4">
+                <StatsBadge label="Empty" count={statusCounts.Empty} color="gray" />
+                <StatsBadge label="Interested" count={statusCounts.Interested} color="amber" />
+                <StatsBadge label="Booked" count={statusCounts.Booked} color="green" />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                placeholder="Search rooms..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm w-48"
+              />
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+              >
+                <option value="all">All Rooms</option>
+                <option value="Empty">Empty Only</option>
+                <option value="Interested">Interested Only</option>
+                <option value="Booked">Booked Only</option>
+              </select>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* error banner */}
+      {/* Error Banner */}
       {error && (
-        <div className="max-w-6xl mx-auto px-4 mt-4">
-          <div className="rounded-md border border-red-200 bg-red-50 text-red-800 p-3 text-sm flex items-start gap-3">
-            <div>⚠️</div>
+        <div className="max-w-7xl mx-auto px-4 mt-4">
+          <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 p-4 flex items-center gap-3">
+            <div className="text-xl">⚠️</div>
             <div className="flex-1">{error}</div>
-            <button onClick={() => setError("")} className="text-xs underline">Dismiss</button>
+            <button 
+              onClick={() => setError("")} 
+              className="text-sm px-3 py-1 rounded bg-red-100 dark:bg-red-800 hover:bg-red-200 dark:hover:bg-red-700 transition-colors"
+            >
+              Dismiss
+            </button>
           </div>
         </div>
       )}
 
-      {/* Grid and legend section */}
-      <main className="max-w-6xl mx-auto px-4 py-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <Legend />
-          </div>
-          <div className="text-sm text-gray-500 dark:text-gray-400">Click a tile to view/update</div>
+      {/* Room Grid */}
+      <main className="max-w-7xl mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filteredRooms.map((room) => (
+            <RoomCard
+              key={room.number}
+              room={room}
+              isAdmin={isAdmin}
+              onUpdate={updateRoom}
+              isEditing={editingRoom === room.number}
+              onEdit={(roomNumber) => setEditingRoom(roomNumber)}
+              onCancelEdit={() => setEditingRoom(null)}
+            />
+          ))}
         </div>
 
-        {/* Seat-map style grid */}
-        <div className="mx-auto" style={{ maxWidth: 460 }}>
-          <div className="grid grid-cols-6 gap-2">
-            {FIXED_ROOMS.map((meta) => {
-              const r = roomsMap.get(meta.number) || meta;
-              return (
-                <RoomTile
-                  key={meta.number}
-                  data={r}
-                  onOpen={() => setSelectedRoom(r)}
-                />
-              );
-            })}
+        {filteredRooms.length === 0 && (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">🔍</div>
+            <p className="text-gray-500 dark:text-gray-400">No rooms match your current filters.</p>
           </div>
-        </div>
+        )}
       </main>
 
-      {/* Room sheet (right side) */}
-      {selectedRoom && (
-        <RoomSheet
-          room={selectedRoom}
-          onClose={() => setSelectedRoom(null)}
-          onSave={async (payload) => {
-            if (!isAdmin) { setError("Only admins can update rooms."); return; }
-            if (payload.status === "Booked" && !payload.bookedTill) { setError("Booked requires a date."); return; }
-            await updateRoom(selectedRoom.number, payload);
-            setSelectedRoom(null);
-          }}
-          isAdmin={isAdmin}
-        />
-      )}
-
-      <footer className="max-w-6xl mx-auto px-4 pb-8 text-xs text-gray-500 dark:text-gray-400">
-        <p>Tip: This is a minimal seat-map UI — subtle interactions, clean look.</p>
+      <footer className="max-w-7xl mx-auto px-4 pb-8 text-center">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Dharamshala Room Management • {rooms.length} Total Rooms
+        </p>
       </footer>
     </div>
   );
 }
 
 /* ============================
-   RoomTile: compact seat-like tile
+   Stats Badge Component
    ============================ */
-function RoomTile({ data = {}, onOpen = () => {} }) {
-  const status = data.status || "Empty";
-  const meta = STATUS_META[status] || STATUS_META.Empty;
-  return (
-    <button
-      aria-label={`Room ${data.number || "?"}, ${data.type || ""}, ${status}`}
-      onClick={() => onOpen(data)}
-      className={`relative aspect-square rounded-md p-2 overflow-hidden border ${meta.bg} ${meta.border} transition hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-400`}
-      title={`Room ${data.number}`}
-    >
-      <div className="w-full h-full flex flex-col items-center justify-center">
-        <div className="text-xs font-semibold">{`#${data.number}`}</div>
-        <div className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">{data.tag || ""}</div>
-
-        {/* status dot */}
-        <div className={`absolute top-2 right-2 w-2 h-2 rounded-full ${meta.dot} border border-white dark:border-gray-800`} />
-
-        {/* note pill */}
-        {data.note && (
-          <div className="absolute bottom-2 left-2 right-2 px-1.5 py-0.5 text-[10px] truncate rounded bg-white/90 dark:bg-gray-900/70 border text-gray-700 dark:text-gray-100">
-            {data.note.length > 20 ? data.note.slice(0, 18) + "…" : data.note}
-          </div>
-        )}
-      </div>
-    </button>
-  );
-}
-
-/* ============================
-   RoomSheet: right-side panel to edit
-   ============================ */
-function RoomSheet({ room, onClose, onSave, isAdmin }) {
-  const [status, setStatus] = useState(room.status || "Empty");
-  const [bookedTill, setBookedTill] = useState(room.bookedTill || "");
-  const [note, setNote] = useState(room.note || "");
-  const [saving, setSaving] = useState(false);
-  const [localErr, setLocalErr] = useState("");
-
-  const handleSave = async () => {
-    setLocalErr("");
-    if (!isAdmin) { setLocalErr("Only admins can update rooms."); return; }
-    if (status === "Booked" && !bookedTill) { setLocalErr("Please set 'Booked Till' date."); return; }
-    try {
-      setSaving(true);
-      await onSave({ status, bookedTill: status === "Booked" ? bookedTill : "", note });
-    } catch (e) {
-      console.error(e);
-      setLocalErr("Failed to save. Try again.");
-    } finally {
-      setSaving(false);
-    }
+function StatsBadge({ label, count, color }) {
+  const colorClasses = {
+    gray: "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300",
+    amber: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300",
+    green: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="ml-auto w-full max-w-sm h-full bg-white dark:bg-gray-800 shadow-xl border-l">
-        <div className="p-4 border-b">
-          <div className="text-sm text-gray-500">Room</div>
-          <div className="text-xl font-semibold">#{room.number}</div>
-        </div>
-
-        <div className="p-4 space-y-4">
-          <div className="text-sm text-gray-500">Details</div>
-          <div className="text-xs">
-            <div><strong>Type:</strong> {room.type}</div>
-            <div><strong>Attach:</strong> {room.attach}</div>
-            <div><strong>Tag:</strong> {room.tag}</div>
-          </div>
-
-          <div>
-            <div className="text-xs font-medium mb-2">Status</div>
-            <div className="grid grid-cols-3 gap-2">
-              {["Empty","Interested","Booked"].map((s) => (
-                <button key={s} onClick={() => setStatus(s)} className={`px-2 py-2 text-sm rounded ${status===s ? "bg-gray-900 text-white" : "bg-white dark:bg-gray-700"}`} disabled={!isAdmin}>
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {status === "Booked" && (
-            <div>
-              <div className="text-xs font-medium mb-1">Booked Till</div>
-              <input type="date" value={bookedTill} onChange={(e) => setBookedTill(e.target.value)} className="border rounded p-2 w-full" disabled={!isAdmin} />
-            </div>
-          )}
-
-          <div>
-            <div className="text-xs font-medium mb-1">Note</div>
-            <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} className="border rounded p-2 w-full" disabled={!isAdmin} placeholder="short note (name/phone/time)..." />
-          </div>
-
-          {localErr && <div className="text-red-600 text-sm">{localErr}</div>}
-        </div>
-
-        <div className="mt-auto p-4 border-t flex items-center justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-2 border rounded">Cancel</button>
-          <button onClick={handleSave} disabled={saving || !isAdmin} className="px-3 py-2 bg-green-600 text-white rounded">
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </div>
+    <div className={`px-3 py-1 rounded-full text-sm font-medium ${colorClasses[color]}`}>
+      {label}: {count}
     </div>
   );
 }
 
 /* ============================
-   Legend
+   Enhanced Room Card Component
    ============================ */
-function Legend() {
+function RoomCard({ room, isAdmin, onUpdate, isEditing, onEdit, onCancelEdit }) {
+  const [localStatus, setLocalStatus] = useState(room.status || "Empty");
+  const [localNote, setLocalNote] = useState(room.note || "");
+  const [localBookedTill, setLocalBookedTill] = useState(room.bookedTill || "");
+  const [saving, setSaving] = useState(false);
+
+  const status = room.status || "Empty";
+  const meta = STATUS_META[status];
+
+  const handleSave = async () => {
+    if (!isAdmin) return;
+    
+    setSaving(true);
+    try {
+      const payload = {
+        status: localStatus,
+        note: localNote,
+        bookedTill: localStatus === "Booked" ? localBookedTill : ""
+      };
+      
+      await onUpdate(room.number, payload);
+      onCancelEdit();
+    } catch (e) {
+      console.error("Failed to save:", e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setLocalStatus(room.status || "Empty");
+    setLocalNote(room.note || "");
+    setLocalBookedTill(room.bookedTill || "");
+    onCancelEdit();
+  };
+
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center gap-1 text-xs">
-        <div className="w-3 h-3 rounded-sm bg-gray-300 border border-white" />
-        <div className="text-xs">Empty</div>
+    <div className={`relative rounded-xl border-2 ${meta.border} ${meta.bg} p-4 transition-all duration-200 hover:shadow-lg hover:scale-102 transform`}>
+      {/* Status indicator */}
+      <div className="absolute top-3 right-3 flex items-center gap-2">
+        <div className={`w-3 h-3 rounded-full ${meta.dot}`}></div>
+        <span className="text-lg">{meta.icon}</span>
       </div>
-      <div className="flex items-center gap-1 text-xs">
-        <div className="w-3 h-3 rounded-sm bg-amber-500" />
-        <div className="text-xs">Interested</div>
+
+      {/* Room info */}
+      <div className="mb-3">
+        <div className="flex items-baseline gap-2 mb-1">
+          <h3 className="text-xl font-bold">#{room.number}</h3>
+          <span className={`px-2 py-1 rounded text-xs font-medium ${meta.text} bg-white/50 dark:bg-gray-800/50`}>
+            {room.tag}
+          </span>
+        </div>
+        <div className="text-sm opacity-75">
+          {room.type} • {room.attach}
+        </div>
       </div>
-      <div className="flex items-center gap-1 text-xs">
-        <div className="w-3 h-3 rounded-sm bg-green-500" />
-        <div className="text-xs">Booked</div>
+
+      {/* Status and booking info */}
+      <div className="mb-3">
+        {!isEditing ? (
+          <>
+            <div className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${meta.text} bg-white/50 dark:bg-gray-800/50 mb-2`}>
+              {status}
+            </div>
+            {room.bookedTill && status === "Booked" && (
+              <div className="text-xs opacity-75">
+                Until: {new Date(room.bookedTill).toLocaleDateString()}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex gap-1">
+              {["Empty", "Interested", "Booked"].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setLocalStatus(s)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                    localStatus === s
+                      ? "bg-indigo-600 text-white shadow-md"
+                      : "bg-white/50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80"
+                  }`}
+                  disabled={saving}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            
+            {localStatus === "Booked" && (
+              <input
+                type="date"
+                value={localBookedTill}
+                onChange={(e) => setLocalBookedTill(e.target.value)}
+                className="w-full px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700"
+                disabled={saving}
+              />
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Note section */}
+      <div className="mb-3">
+        {!isEditing ? (
+          room.note ? (
+            <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-2">
+              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Note:</div>
+              <div className="text-sm">{room.note}</div>
+            </div>
+          ) : (
+            <div className="text-xs text-gray-400 italic">No notes</div>
+          )
+        ) : (
+          <textarea
+            value={localNote}
+            onChange={(e) => setLocalNote(e.target.value)}
+            placeholder="Add a note (name, phone, etc.)"
+            rows={2}
+            className="w-full px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 resize-none"
+            disabled={saving}
+          />
+        )}
+      </div>
+
+      {/* Action buttons */}
+      {isAdmin && (
+        <div className="flex gap-2">
+          {!isEditing ? (
+            <button
+              onClick={() => onEdit(room.number)}
+              className="flex-1 px-3 py-2 rounded-lg bg-white/70 dark:bg-gray-800/70 text-sm font-medium hover:bg-white dark:hover:bg-gray-700 transition-colors"
+            >
+              Edit
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleCancel}
+                disabled={saving}
+                className="flex-1 px-3 py-1 rounded bg-gray-200 dark:bg-gray-600 text-xs font-medium hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving || (localStatus === "Booked" && !localBookedTill)}
+                className="flex-1 px-3 py-1 rounded bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              >
+                {saving ? "Saving..." : "Save"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Last updated timestamp */}
+      {room.updatedAt && (
+        <div className="absolute bottom-1 right-2 text-xs text-gray-400">
+          {new Date(room.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </div>
+      )}
     </div>
   );
 }

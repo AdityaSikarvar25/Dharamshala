@@ -1,0 +1,29 @@
+// firestore.rules - Place this in your Firebase project
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Rooms collection - readable by authenticated users, writable only by admins
+    match /rooms/{roomId} {
+      // Anyone authenticated can read
+      allow read: if request.auth != null;
+      
+      // Only admins can write (create, update, delete)
+      allow write: if request.auth != null 
+                   && request.auth.token.email in ["adityasikarvar2502@gmail.com"];
+                   // Add more admin emails as needed: ["admin1@gmail.com", "admin2@gmail.com"]
+      
+      // Additional validation for updates
+      allow update: if request.auth != null 
+                    && request.auth.token.email in ["adityasikarvar2502@gmail.com"]
+                    && request.resource.data.keys().hasAll(['number', 'tag', 'attach', 'type', 'status', 'updatedAt'])
+                    && request.resource.data.status in ['Empty', 'Interested', 'Booked']
+                    && request.resource.data.number is int
+                    && request.resource.data.updatedAt is int;
+    }
+    
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
