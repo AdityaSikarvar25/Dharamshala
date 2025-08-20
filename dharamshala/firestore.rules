@@ -18,7 +18,8 @@ service cloud.firestore {
                     && request.resource.data.keys().hasAll(['number', 'tag', 'attach', 'type', 'status', 'updatedAt'])
                     && request.resource.data.status in ['Empty', 'Interested', 'Booked']
                     && request.resource.data.number is int
-                    && request.resource.data.updatedAt is int;
+                    && request.resource.data.updatedAt is int
+                    && (!('peopleCount' in request.resource.data) || (request.resource.data.peopleCount is int && request.resource.data.peopleCount >= 0 && request.resource.data.peopleCount <= 10));
     }
     
     // Deny all other access

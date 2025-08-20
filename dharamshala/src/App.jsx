@@ -107,6 +107,7 @@ export default function App() {
             status: "Empty",
             bookedTill: "",
             note: "",
+            peopleCount: 0,
             updatedAt: Date.now(),
           });
         }
@@ -385,6 +386,7 @@ function RoomCard({ room, isAdmin, onUpdate, isEditing, onEdit, onCancelEdit }) 
   const [localStatus, setLocalStatus] = useState(room.status || "Empty");
   const [localNote, setLocalNote] = useState(room.note || "");
   const [localBookedTill, setLocalBookedTill] = useState(room.bookedTill || "");
+  const [localPeopleCount, setLocalPeopleCount] = useState(room.peopleCount || 0);
   const [saving, setSaving] = useState(false);
 
   const status = room.status || "Empty";
@@ -397,8 +399,9 @@ function RoomCard({ room, isAdmin, onUpdate, isEditing, onEdit, onCancelEdit }) 
     try {
       const payload = {
         status: localStatus,
-        note: localNote,
-        bookedTill: localStatus === "Booked" ? localBookedTill : ""
+        note: localStatus === "Empty" ? "" : localNote,
+        bookedTill: localStatus === "Booked" ? localBookedTill : "",
+        peopleCount: localStatus === "Empty" ? 0 : localPeopleCount
       };
       
       await onUpdate(room.number, payload);
@@ -414,6 +417,7 @@ function RoomCard({ room, isAdmin, onUpdate, isEditing, onEdit, onCancelEdit }) 
     setLocalStatus(room.status || "Empty");
     setLocalNote(room.note || "");
     setLocalBookedTill(room.bookedTill || "");
+    setLocalPeopleCount(room.peopleCount || 0);
     onCancelEdit();
   };
 
@@ -435,6 +439,11 @@ function RoomCard({ room, isAdmin, onUpdate, isEditing, onEdit, onCancelEdit }) 
         </div>
         <div className="text-sm opacity-75">
           {room.type} • {room.attach}
+          {room.peopleCount > 0 && room.status !== "Empty" && (
+            <span className="ml-2 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium">
+              👥 {room.peopleCount} people
+            </span>
+          )}
         </div>
       </div>
 
@@ -457,7 +466,15 @@ function RoomCard({ room, isAdmin, onUpdate, isEditing, onEdit, onCancelEdit }) 
               {["Empty", "Interested", "Booked"].map((s) => (
                 <button
                   key={s}
-                  onClick={() => setLocalStatus(s)}
+                  onClick={() => {
+                    setLocalStatus(s);
+                    // Auto-clear data when setting to Empty
+                    if (s === "Empty") {
+                      setLocalNote("");
+                      setLocalPeopleCount(0);
+                      setLocalBookedTill("");
+                    }
+                  }}
                   className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
                     localStatus === s
                       ? "bg-indigo-600 text-white shadow-md"
@@ -479,6 +496,41 @@ function RoomCard({ room, isAdmin, onUpdate, isEditing, onEdit, onCancelEdit }) 
                 disabled={saving}
               />
             )}
+            
+            {(localStatus === "Interested" || localStatus === "Booked") && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                  👥 People:
+                </label>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setLocalPeopleCount(Math.max(0, localPeopleCount - 1))}
+                    disabled={saving || localPeopleCount <= 0}
+                    className="w-6 h-6 rounded bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-800/50 text-red-600 dark:text-red-400 text-xs font-bold disabled:opacity-50"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    value={localPeopleCount}
+                    onChange={(e) => setLocalPeopleCount(Math.max(0, parseInt(e.target.value) || 0))}
+                    min="0"
+                    max="10"
+                    className="w-12 px-1 py-1 text-xs text-center rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700"
+                    disabled={saving}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setLocalPeopleCount(Math.min(10, localPeopleCount + 1))}
+                    disabled={saving || localPeopleCount >= 10}
+                    className="w-6 h-6 rounded bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-800/50 text-green-600 dark:text-green-400 text-xs font-bold disabled:opacity-50"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -486,23 +538,33 @@ function RoomCard({ room, isAdmin, onUpdate, isEditing, onEdit, onCancelEdit }) 
       {/* Note section */}
       <div className="mb-3">
         {!isEditing ? (
-          room.note ? (
+          // Display notes only for non-empty rooms
+          room.note && room.status !== "Empty" ? (
             <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-2">
               <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Note:</div>
               <div className="text-sm">{room.note}</div>
             </div>
           ) : (
-            <div className="text-xs text-gray-400 italic">No notes</div>
+            room.status === "Empty" ? (
+              <div className="text-xs text-gray-400 italic">Room is empty</div>
+            ) : (
+              <div className="text-xs text-gray-400 italic">No notes</div>
+            )
           )
         ) : (
-          <textarea
-            value={localNote}
-            onChange={(e) => setLocalNote(e.target.value)}
-            placeholder="Add a note (name, phone, etc.)"
-            rows={2}
-            className="w-full px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 resize-none"
-            disabled={saving}
-          />
+          // Edit mode - show note input only for non-empty rooms
+          localStatus !== "Empty" ? (
+            <textarea
+              value={localNote}
+              onChange={(e) => setLocalNote(e.target.value)}
+              placeholder="Add a note (name, phone, etc.)"
+              rows={2}
+              className="w-full px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 resize-none"
+              disabled={saving}
+            />
+          ) : (
+            <div className="text-xs text-gray-400 italic">Empty rooms don't need notes</div>
+          )
         )}
       </div>
 
