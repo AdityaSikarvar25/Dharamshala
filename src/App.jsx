@@ -225,6 +225,27 @@ export default function App() {
     return counts;
   }, [rooms]);
 
+  useEffect(() => {
+    if (!isAdmin) return; // Only admins can auto-clear
+    const now = new Date();
+    rooms.forEach(room => {
+      if (
+        room.status === "Booked" &&
+        room.bookedTill &&
+        new Date(room.bookedTill).setHours(23,59,59,999) < now
+      ) {
+        // Auto-clear: set to Empty
+        updateRoom(room.number, {
+          status: "Empty",
+          note: "",
+          bookedTill: "",
+          peopleCount: 0
+        });
+      }
+    });
+    // eslint-disable-next-line
+  }, [rooms, isAdmin]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
@@ -456,7 +477,7 @@ function RoomCard({ room, isAdmin, onUpdate, isEditing, onEdit, onCancelEdit }) 
             </div>
             {room.bookedTill && status === "Booked" && (
               <div className="text-xs opacity-75">
-                Until: {new Date(room.bookedTill).toLocaleDateString()}
+                Until: {formatDMY(room.bookedTill)}
               </div>
             )}
           </>
@@ -607,4 +628,10 @@ function RoomCard({ room, isAdmin, onUpdate, isEditing, onEdit, onCancelEdit }) 
       )}
     </div>
   );
+}
+
+// Add this helper function at the top or bottom of your file:
+function formatDMY(dateStr) {
+  const d = new Date(dateStr);
+  return `${d.getDate().toString().padStart(2, '0')} ${d.toLocaleString('default', { month: 'short' })} ${d.getFullYear()}`;
 }
